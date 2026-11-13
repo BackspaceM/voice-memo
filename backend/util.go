@@ -20,15 +20,28 @@ const maxJSONBytes = 2 << 20
 // 具体解析在 settings.go 的 SettingsStore.Limits() 中完成。
 
 var audioExt = map[string]string{
-	"audio/webm":               "webm",
-	"audio/mp4":                "m4a",
-	"audio/x-m4a":              "m4a",
-	"audio/ogg":                "ogg",
-	"audio/wav":                "wav",
-	"audio/x-wav":              "wav",
-	"audio/mpeg":               "mp3",
-	"audio/aac":                "aac",
-	"audio/flac":               "flac",
+	"audio/webm":      "webm",
+	"audio/mp4":       "m4a",
+	"audio/m4a":       "m4a",
+	"audio/x-m4a":     "m4a",
+	"audio/mp4a-latm": "m4a",
+	"audio/ogg":       "ogg",
+	"audio/wav":       "wav",
+	"audio/x-wav":     "wav",
+	"audio/wave":      "wav",
+	"audio/mpeg":      "mp3",
+	"audio/aac":       "aac",
+	"audio/x-aac":     "aac",
+	"audio/flac":      "flac",
+	// 手机系统录音机（capture）常见输出，导入时不能因格式白名单而报 415。
+	"audio/3gpp":               "3gp",
+	"audio/3gpp2":              "3g2",
+	"audio/amr":                "amr",
+	"audio/amr-wb":             "awb",
+	"audio/x-caf":              "caf",
+	"audio/aiff":               "aiff",
+	"audio/x-aiff":             "aiff",
+	"audio/x-ms-wma":           "wma",
 	"application/octet-stream": "bin",
 }
 

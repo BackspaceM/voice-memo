@@ -275,6 +275,10 @@ func (s *SettingsStore) View(st *Store, https bool) map[string]any {
 	defer s.mu.RUnlock()
 	cfg := s.AIConfigLocked()
 	l := s.LimitsLocked()
+	tlsMode := "self-signed"
+	if envFirst("TLS_CERT_FILE") != "" && envFirst("TLS_KEY_FILE") != "" {
+		tlsMode = "custom"
+	}
 	return map[string]any{
 		"ai": map[string]any{
 			"provider":      s.pick([]string{"ai", "provider"}, firstNonEmpty(envFirst("AI_PROVIDER"), "openai")),
@@ -312,7 +316,8 @@ func (s *SettingsStore) View(st *Store, https bool) map[string]any {
 			"dataDir":      st.DataDir(),
 			"https":        https,
 			"httpsAuto":    envFirst("ENABLE_HTTPS") == "1",
-			"tlsSan":       envFirst("TLS_SAN"),
+			"tlsSan":       firstNonEmpty(envFirst("TLS_SAN"), "localhost"),
+			"tlsMode":      tlsMode,
 			"identityHint": "PUID / PGID / UMASK / HTTPS 由容器启动参数决定，需在 compose 中修改并重建容器后生效",
 		},
 		"providers": map[string]any{"llm": llmProviders, "asr": asrProviders},

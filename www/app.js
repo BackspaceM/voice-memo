@@ -180,7 +180,8 @@ function renderAll() {
 }
 
 function renderSidebar() {
-  $$('#nav-views button').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
+  // 桌面侧栏与手机顶部操作栏共用同一批 data-view 按钮，状态一起同步。
+  $$('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
   const folders = state.stats.folders || [];
   $('#folder-list').innerHTML = folders.length
     ? folders.map((f) => `<button type="button" class="chip ${state.folder === f.name ? 'active' : ''}" data-folder="${esc(f.name)}"><span class="label">${esc(f.name)}</span><span class="num">${f.count}</span></button>`).join('')
@@ -189,6 +190,11 @@ function renderSidebar() {
   $('#tag-list').innerHTML = tags.length
     ? tags.map((t) => `<button type="button" class="chip ${state.tag === t.name ? 'active' : ''}" data-tag="${esc(t.name)}"><span class="label"># ${esc(t.name)}</span><span class="num">${t.count}</span></button>`).join('')
     : '<div class="chip-empty">暂无标签</div>';
+  // 窄屏侧栏被隐藏，文件夹/标签也搬到常驻栏里，避免手机上无法筛选。
+  const chips = [];
+  folders.forEach((f) => chips.push(`<button type="button" data-folder="${esc(f.name)}" class="${state.folder === f.name ? 'active' : ''}">${esc(f.name)}</button>`));
+  tags.forEach((t) => chips.push(`<button type="button" data-tag="${esc(t.name)}" class="${state.tag === t.name ? 'active' : ''}"># ${esc(t.name)}</button>`));
+  $('#mobile-chips').innerHTML = chips.join('');
 }
 
 function renderCounts() {
@@ -401,9 +407,14 @@ const FORMAT_META = {
 };
 
 const MIME_EXT = {
-  'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/ogg': 'ogg',
-  'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/mpeg': 'mp3', 'audio/aac': 'aac',
+  'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/m4a': 'm4a', 'audio/x-m4a': 'm4a',
+  'audio/mp4a-latm': 'm4a', 'audio/ogg': 'ogg',
+  'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav',
+  'audio/mpeg': 'mp3', 'audio/aac': 'aac', 'audio/x-aac': 'aac',
   'audio/flac': 'flac',
+  // 手机系统录音机常见输出（Android 3GP/AMR、iOS CAF/AIFF 等）
+  'audio/3gpp': '3gp', 'audio/3gpp2': '3g2', 'audio/amr': 'amr', 'audio/amr-wb': 'awb',
+  'audio/x-caf': 'caf', 'audio/aiff': 'aiff', 'audio/x-aiff': 'aiff', 'audio/x-ms-wma': 'wma',
 };
 
 function extOf(mime) { return MIME_EXT[String(mime || '').split(';')[0].toLowerCase()] || 'bin'; }
@@ -567,18 +578,43 @@ function stopWave(wave) {
   try { wave.ctx.close(); } catch (_) { /* ignore */ }
 }
 
+// 桌面侧栏与手机常驻栏都有录音按钮，状态统一更新，避免窄屏下不同步。
+function setRecordingUI(on) {
+  $$('[data-record-btn]').forEach((btn) => {
+    btn.classList.toggle('recording', on);
+    const label = btn.querySelector('[data-record-label]');
+    if (label) label.textContent = on ? '录音中…' : '开始录音';
+  });
+}
+
+function micErrorMessage(err) {
+  const name = (err && err.name) || '';
+  const map = {
+    NotAllowedError: '权限被拒绝，请在地址栏的站点设置里允许麦克风后重试',
+    PermissionDeniedError: '权限被拒绝，请在地址栏的站点设置里允许麦克风后重试',
+    SecurityError: '浏览器因安全策略拒绝了麦克风，请检查证书与站点权限',
+    NotFoundError: '没有检测到麦克风设备',
+    DevicesNotFoundError: '没有检测到麦克风设备',
+    NotReadableError: '麦克风被其它应用占用，关闭后再试',
+    TrackStartError: '麦克风被其它应用占用，关闭后再试',
+    OverconstrainedError: '当前音频约束不被支持',
+    AbortError: '麦克风启动被中断，请再试一次',
+  };
+  return map[name] || (err && err.message) || '未知错误';
+}
+
 async function startRecording() {
   if (state.rec) { stopRecording(); return; }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
-    const hint = window.isSecureContext
-      ? '请用最新版 Chrome / Edge / Safari，或改用「导入音频」'
-      : '当前为 HTTP 访问，浏览器已禁用麦克风；请开启内置 HTTPS / 按提示配置浏览器，或改用「导入音频」';
-    toast(`当前环境不支持浏览器录音：${hint}`, 'warn');
+  const cap = recordingCapability();
+  if (!cap.ok) {
+    // 用户主动点了录音，必须给出具体原因和可操作方案，而不是一句「请用最新版浏览器」。
+    showEnvBanner(cap.kind, true);
+    toast(envSummary(cap.kind), 'warn');
     return;
   }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch (err) { toast(`无法访问麦克风：${err.message || '权限被拒绝'}`, 'error'); return; }
+  catch (err) { toast(`无法访问麦克风：${micErrorMessage(err)}`, 'error'); return; }
 
   const available = supportedFormats();
   let targetFormat = state.recordFormat;
@@ -607,8 +643,7 @@ async function startRecording() {
     stopWave(rec.wave);
     rec.stream.getTracks().forEach((t) => t.stop());
     $('#recorder-panel').hidden = true;
-    $('#btn-record').classList.remove('recording');
-    $('#btn-record-label').textContent = '开始录音';
+    setRecordingUI(false);
     $('#btn-stop').disabled = false;
     if (rec.cancelled) { toast('已取消录音'); return; }
     const raw = new Blob(rec.chunks, { type: rec.mime || 'audio/webm' });
@@ -641,8 +676,7 @@ async function startRecording() {
   };
 
   $('#recorder-panel').hidden = false;
-  $('#btn-record').classList.add('recording');
-  $('#btn-record-label').textContent = '录音中…';
+  setRecordingUI(true);
   $('#rec-state').textContent = '正在录音…';
   $('#rec-time').textContent = '00:00';
   rec.timer = setInterval(() => {
@@ -672,7 +706,10 @@ function normalizeMime(file) {
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   const map = {
     webm: 'audio/webm', mp4: 'audio/mp4', m4a: 'audio/mp4', ogg: 'audio/ogg',
-    wav: 'audio/wav', mp3: 'audio/mpeg', aac: 'audio/aac', flac: 'audio/flac',
+    wav: 'audio/wav', wave: 'audio/wav', mp3: 'audio/mpeg', aac: 'audio/aac', flac: 'audio/flac',
+    '3gp': 'audio/3gpp', '3gpp': 'audio/3gpp', '3g2': 'audio/3gpp2',
+    amr: 'audio/amr', awb: 'audio/amr-wb', caf: 'audio/x-caf',
+    aif: 'audio/aiff', aiff: 'audio/aiff', wma: 'audio/x-ms-wma',
   };
   return map[ext] || '';
 }
@@ -731,8 +768,12 @@ async function finalizeAudio(blob, mime, durationMs, existingId = null) {
 
 async function importFile(file) {
   if (!file) return;
-  const mime = normalizeMime(file);
-  if (!mime) { toast('不支持的音频格式', 'warn'); return; }
+  let mime = normalizeMime(file);
+  if (!mime) {
+    // 系统录音机偶尔返回没有扩展名、也没有 MIME 的文件：按二进制接收，至少先把数据存下来。
+    mime = 'application/octet-stream';
+    toast('未能识别音频格式，已按原始文件保存（可能无法在网页内播放）', 'warn');
+  }
   const durationMs = await readDuration(file);
   await finalizeAudio(file, mime, durationMs);
 }
@@ -906,13 +947,97 @@ function fallbackCopy(text, done) {
   ta.remove();
 }
 
-function checkSecureContext() {
-  const cmd = chromeFlagCmd();
-  $('#insecure-cmd').textContent = cmd;
-  $('#set-https-cmd').textContent = cmd;
-  let dismissed = false;
-  try { dismissed = sessionStorage.getItem('vms-http-hint') === 'off'; } catch (_) { /* file:// 下可能不可用 */ }
-  $('#insecure-banner').hidden = window.isSecureContext || dismissed;
+/* ---------- 录音环境诊断 ----------
+   浏览器只在「证书链可信的 HTTPS / localhost」暴露 navigator.mediaDevices。
+   自签证书被点「继续前往」放行后页面能打开，但媒体设备接口仍被隐藏，
+   此时 isSecureContext 甚至可能为 true —— 旧版只看 isSecureContext 会误报
+   「请用最新版浏览器」。这里按接口的实际可用性区分原因。 */
+function recordingCapability() {
+  const httpsPage = location.protocol === 'https:';
+  const localhost = ['localhost', '127.0.0.1', '[::1]'].indexOf(location.hostname) >= 0;
+  const secure = Boolean(window.isSecureContext);
+  const mediaDevices = Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const mediaRecorder = typeof MediaRecorder !== 'undefined';
+  let kind = 'ok';
+  if (!mediaDevices) kind = httpsPage ? 'cert' : 'http';
+  else if (!mediaRecorder) kind = 'norecorder';
+  else if (!secure && !localhost) kind = 'http';
+  return { ok: kind === 'ok', kind, httpsPage, localhost, secure, mediaDevices, mediaRecorder };
+}
+
+function runtimeInfo() { return (state.settings && state.settings.runtime) || {}; }
+
+function selfSignedCA() {
+  const r = runtimeInfo();
+  return Boolean(r.https) && r.tlsMode !== 'custom';
+}
+
+function envSummary(kind) {
+  if (kind === 'http') return 'HTTP 下浏览器禁用了麦克风，请查看下方解决方案';
+  if (kind === 'cert') return 'HTTPS 证书未被设备信任，需安装 CA 后才能录音';
+  return '当前浏览器不支持录音编码，可用手机系统录音机代替';
+}
+
+const ENV_TEXT = {
+  http: {
+    title: '当前通过 HTTP 访问，浏览器已禁用麦克风',
+    desc: () => '这是浏览器的安全策略（只有受信任的 HTTPS 或 localhost 才提供麦克风），不是套件故障，升级浏览器也不会改变。可选：① <b>点下方按钮用系统录音机录一段</b>（手机上会调起录音 App），录完自动导入；② 开启内置 HTTPS 并按「打开设置」里的步骤安装 CA 证书；③ 桌面 Chrome / Edge 用下面的启动参数把本地址标记为可信（必须用独立 user-data-dir）；④ 用「导入音频」上传已有录音，其余功能不受影响。',
+    code: () => chromeFlagCmd(),
+  },
+  cert: {
+    title: 'HTTPS 证书未被设备信任，浏览器仍禁用了麦克风',
+    desc: () => {
+      const r = runtimeInfo();
+      const san = esc(r.tlsSan || 'localhost');
+      if (!r.https) {
+        return '页面是 HTTPS，但套件没有启用内置 HTTPS，说明证书来自上游反向代理。浏览器只向<b>证书链可信</b>的页面开放麦克风；请给反代换成正式证书，或把它的自签 CA 导入设备信任库。也可以点下方按钮用系统录音机录一段，不受此限制。';
+      }
+      return '自签证书如果没有导入设备信任库，Edge / Chrome 即使允许你点「继续前往」，也会直接隐藏麦克风接口 —— <b>这与浏览器版本无关，最新版 Edge 同样如此</b>。请点下方「下载 CA 证书」（iPhone / iPad 用「iOS 描述文件」），按「打开设置 → 连接与安全」里的分平台步骤安装，<b>完全关闭并重启浏览器</b>，并用证书里包含的地址（' + san + '）重新访问；若用的是别的域名或 IP，把它加进 compose 的 <code>TLS_SAN</code> 后重建容器。';
+    },
+    code: () => {
+      const r = runtimeInfo();
+      return [
+        `当前访问地址：${location.origin}`,
+        `证书 SAN：${r.tlsSan || 'localhost'}（另含 localhost / 127.0.0.1 / 容器主机名）`,
+        `浏览器安全上下文：${window.isSecureContext ? '是' : '否'}　麦克风接口：${navigator.mediaDevices ? '存在' : '被隐藏'}`,
+      ].join('\n');
+    },
+  },
+  norecorder: {
+    title: '当前浏览器不支持 MediaRecorder 录音编码',
+    desc: () => '浏览器提供了麦克风接口，但缺少 MediaRecorder（常见于较旧的 iOS WebView 与部分内嵌浏览器）。建议改用系统自带浏览器，或点下方按钮调用系统录音 App，录完自动导入。',
+    code: () => '',
+  },
+};
+
+function envDismissed() {
+  try { return sessionStorage.getItem('vms-http-hint') === 'off'; } catch (_) { return false; }
+}
+
+function showEnvBanner(kind, force) {
+  const banner = $('#insecure-banner');
+  const t = ENV_TEXT[kind];
+  if (!t) { banner.hidden = true; return; }
+  if (!force && envDismissed()) { banner.hidden = true; return; }
+  $('#ib-title').textContent = t.title;
+  $('#ib-desc').innerHTML = t.desc();
+  const code = t.code();
+  $('#ib-code').hidden = !code;
+  $('#ib-code').textContent = code;
+  const ca = kind === 'cert' && selfSignedCA();
+  $('#ib-ca-crt').hidden = !ca;
+  $('#ib-ca-ios').hidden = !ca;
+  $('#ib-copy').hidden = kind !== 'http';
+  $('#ib-capture').hidden = false;
+  $('#ib-capture').textContent = window.innerWidth <= 700 ? '用手机录音机录' : '用系统录音 / 导入音频';
+  banner.hidden = false;
+}
+
+function checkRecordingEnv(force) {
+  $('#set-https-cmd').textContent = chromeFlagCmd();
+  const cap = recordingCapability();
+  if (cap.ok) { $('#insecure-banner').hidden = true; return; }
+  showEnvBanner(cap.kind, force);
 }
 
 function fillProviders(s) {
@@ -964,20 +1089,24 @@ function fillRuntime(s) {
     `证书 SAN：<b>${esc(r.tlsSan || 'localhost + 本机地址')}</b>`,
   ].join('<br>');
 
-  const secure = Boolean(window.isSecureContext);
+  const cap = recordingCapability();
   $('#set-https-state').innerHTML = [
     `访问地址：<b>${esc(location.origin)}</b>`,
     `协议：<b>${esc(location.protocol)}</b>`,
-    `浏览器安全上下文：<b>${secure ? '是（可录音）' : '否（麦克风被禁用）'}</b>`,
-    `套件内置 HTTPS：<b>${r.https ? '已开启' : '未开启'}</b>`,
+    `浏览器安全上下文：<b>${cap.secure ? '是' : '否'}</b>`,
+    `麦克风接口：<b>${cap.mediaDevices ? '可用' : '被浏览器隐藏'}</b>`,
+    `录音编码器 MediaRecorder：<b>${cap.mediaRecorder ? '可用' : '不支持'}</b>`,
+    `套件内置 HTTPS：<b>${r.https ? '已开启' : '未开启'}</b>（${r.tlsMode === 'custom' ? '使用自带证书' : '自签证书'}）`,
+    `证书 SAN：<b>${esc(r.tlsSan || 'localhost')}</b>`,
   ].join('<br>');
-  $('#set-secure-state').textContent = secure
-    ? '当前连接可用麦克风。'
-    : '浏览器只允许 HTTPS / localhost 使用麦克风；若已用启动参数标记为安全源仍显示「否」，请确认使用了独立的 user-data-dir 并重启浏览器。';
+  $('#set-secure-state').textContent = cap.ok
+    ? '当前连接可以正常录音。'
+    : `${ENV_TEXT[cap.kind] ? ENV_TEXT[cap.kind].title : '当前连接无法录音'}。详见上方说明与 CA 安装步骤；手机上也可直接用「手机录音」。`;
   $('#set-ca-link').hidden = !r.https;
+  $('#set-ca-ios-link').hidden = !r.https;
   $('#set-https-guide').textContent = r.https
-    ? '导入 CA 证书到系统/浏览器信任库后，地址栏不再告警，麦克风可正常使用；也可换成 NAS 已有正式证书的反向代理。'
-    : '开启方法：在 docker-compose.yml 的 environment 加 ENABLE_HTTPS=1 与 TLS_SAN=<NAS IP 或域名>，重建容器后用 https:// 访问同一端口。';
+    ? '自签证书必须把 CA 导入设备信任库并重启浏览器，麦克风才会被浏览器开放；仅点「继续前往」是不够的。也可换成 NAS 已有正式证书的反向代理。'
+    : '开启方法：在 docker-compose.yml 的 environment 加 ENABLE_HTTPS=1 与 TLS_SAN=<NAS IP 或域名>，重建容器后用 https:// 访问同一端口，然后按上方步骤安装 CA。';
 }
 
 async function openSettings(tab) {
@@ -1103,6 +1232,7 @@ async function testAI(target) {
 
 function bindSettingsEvents() {
   $('#btn-settings').addEventListener('click', () => openSettings());
+  $('#m-settings').addEventListener('click', () => openSettings());
   $('#settings-close').addEventListener('click', closeSettings);
   $('#settings-modal').addEventListener('click', (e) => { if (e.target.id === 'settings-modal') closeSettings(); });
   $('#settings-tabs').addEventListener('click', (e) => {
@@ -1125,10 +1255,15 @@ function bindSettingsEvents() {
   $('#set-asr-test').addEventListener('click', () => testAI('asr'));
   $('#d-download').addEventListener('click', () => downloadAudio(false));
   $('#d-download-wav').addEventListener('click', () => downloadAudio(true));
-  $('#insecure-copy').addEventListener('click', () => copyText(chromeFlagCmd()));
+  $('#ib-copy').addEventListener('click', () => copyText(chromeFlagCmd()));
   $('#set-https-copy').addEventListener('click', () => copyText(chromeFlagCmd()));
-  $('#insecure-open-settings').addEventListener('click', () => openSettings('https'));
-  $('#insecure-dismiss').addEventListener('click', () => {
+  $('#ib-settings').addEventListener('click', () => openSettings('https'));
+  $('#ib-ca-crt').addEventListener('click', () => triggerDownload('/api/ca.crt', 'voice-memo-ca.crt'));
+  // iOS 需要让 Safari 自己接管描述文件，才会弹出「安装配置描述文件」。
+  $('#ib-ca-ios').addEventListener('click', () => { window.location.href = '/api/ca.mobileconfig'; });
+  $('#ib-capture').addEventListener('click', openCapture);
+  $('#ib-recheck').addEventListener('click', () => location.reload());
+  $('#ib-dismiss').addEventListener('click', () => {
     $('#insecure-banner').hidden = true;
     try { sessionStorage.setItem('vms-http-hint', 'off'); } catch (_) { /* ignore */ }
   });
@@ -1137,8 +1272,16 @@ function bindSettingsEvents() {
   });
 }
 
+// 调起系统录音机：capture 不走 getUserMedia，因此 HTTP / 自签 HTTPS / 内嵌浏览器都能用。
+function openCapture() {
+  state.replaceTarget = null;
+  $('#capture-input').click();
+}
+
 function bindEvents() {
-  $('#btn-record').addEventListener('click', () => { if (state.rec) stopRecording(); else startRecording(); });
+  $$('[data-record-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => { if (state.rec) stopRecording(); else startRecording(); });
+  });
   $('#btn-empty-record').addEventListener('click', () => {
     if (state.q || state.folder || state.tag || state.view !== 'all') {
       state.q = ''; state.folder = ''; state.tag = ''; state.view = 'all';
@@ -1147,7 +1290,10 @@ function bindEvents() {
       refresh();
     } else startRecording();
   });
-  $('#btn-import').addEventListener('click', () => { state.replaceTarget = null; $('#file-input').click(); });
+  for (const sel of ['#btn-import', '#m-import']) {
+    $(sel).addEventListener('click', () => { state.replaceTarget = null; $('#file-input').click(); });
+  }
+  $('#m-capture').addEventListener('click', openCapture);
   $('#btn-new').addEventListener('click', () => createBlank());
   $('#btn-add-folder').addEventListener('click', () => {
     const name = window.prompt('新文件夹名称（将同时创建一条空白备忘录）');
@@ -1165,30 +1311,41 @@ function bindEvents() {
       readDuration(file).then((d) => finalizeAudio(file, mime, d, target));
     } else importFile(file);
   });
+  $('#capture-input').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    state.replaceTarget = null;
+    importFile(file);
+  });
 
-  $('#nav-views').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-view]');
-    if (!btn) return;
-    state.view = btn.dataset.view;
-    state.folder = '';
-    state.tag = '';
-    refresh();
-  });
-  $('#folder-list').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-folder]');
-    if (!btn) return;
-    state.folder = state.folder === btn.dataset.folder ? '' : btn.dataset.folder;
-    state.tag = '';
-    state.view = 'all';
-    refresh();
-  });
-  $('#tag-list').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-tag]');
-    if (!btn) return;
-    state.tag = state.tag === btn.dataset.tag ? '' : btn.dataset.tag;
-    state.folder = '';
-    state.view = 'all';
-    refresh();
+  // 视图 / 文件夹 / 标签：桌面侧栏与手机常驻栏共用一套委托，避免两套状态不同步。
+  document.addEventListener('click', (e) => {
+    const t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    const view = t.closest('[data-view]');
+    if (view) {
+      state.view = view.dataset.view;
+      state.folder = '';
+      state.tag = '';
+      refresh();
+      return;
+    }
+    const folder = t.closest('[data-folder]');
+    if (folder) {
+      state.folder = state.folder === folder.dataset.folder ? '' : folder.dataset.folder;
+      state.tag = '';
+      state.view = 'all';
+      refresh();
+      return;
+    }
+    const tag = t.closest('[data-tag]');
+    if (tag) {
+      state.tag = state.tag === tag.dataset.tag ? '' : tag.dataset.tag;
+      state.folder = '';
+      state.view = 'all';
+      refresh();
+    }
   });
 
   $('#search').addEventListener('input', (e) => {
@@ -1297,7 +1454,7 @@ function bindEvents() {
 async function init() {
   bindEvents();
   bindSettingsEvents();
-  checkSecureContext();
+  $('#set-https-cmd').textContent = chromeFlagCmd();
   try {
     await loadConfig();
     await refresh();
@@ -1306,6 +1463,8 @@ async function init() {
   } catch (err) {
     toast(`初始化失败：${err.message}`, 'error');
   }
+  // 放在配置加载之后：诊断条需要 runtime 里的 HTTPS / SAN 才能给出准确原因。
+  checkRecordingEnv();
 }
 
 init();

@@ -5,7 +5,7 @@ set -euo pipefail
 
 TOOL_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TOOL_DIR/../.." && pwd)"
-TAG="${TAG:-0.2.0}"
+TAG="${TAG:-0.2.1}"
 REPO="${DOCKERHUB_REPO:-liuyunshan613/voice-memo}"
 LOGIN_USER="${DOCKERHUB_USERNAME:-liuyunshan613}"
 PROXY="${DOCKERHUB_PROXY:-}"

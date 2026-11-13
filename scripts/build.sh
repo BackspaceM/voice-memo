@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NS="${DOCKERHUB_USER:-liuyunshan613}"
-TAG="${TAG:-0.2.0}"
+TAG="${TAG:-0.2.1}"
 IMAGE="${NS}/voice-memo"
 
 command -v docker >/dev/null 2>&1 || { echo "错误：未找到 docker，请先安装 Docker Desktop / Docker Engine" >&2; exit 1; }

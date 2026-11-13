@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 NS="${DOCKERHUB_USER:-liuyunshan613}"
 LOGIN_USER="${DOCKERHUB_USERNAME:-$NS}"
-TAG="${TAG:-0.2.0}"
+TAG="${TAG:-0.2.1}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 IMAGE="${NS}/voice-memo"
 

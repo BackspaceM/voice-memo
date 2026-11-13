@@ -95,18 +95,10 @@ func (h *handler) route(w http.ResponseWriter, r *http.Request) *apiError {
 		return nil
 
 	case p == "/api/ca.crt" && m == http.MethodGet:
-		if h.caFile == "" {
-			return bad(404, "未启用内置自签证书")
-		}
-		b, err := os.ReadFile(h.caFile)
-		if err != nil {
-			return bad(404, "证书文件不可用")
-		}
-		w.Header().Set("Content-Type", "application/x-x509-ca-cert")
-		w.Header().Set("Content-Disposition", `attachment; filename="voice-memo-ca.crt"`)
-		w.WriteHeader(200)
-		_, _ = w.Write(b)
-		return nil
+		return h.serveCA(w, false)
+
+	case p == "/api/ca.mobileconfig" && m == http.MethodGet:
+		return h.serveCA(w, true)
 
 	case p == "/api/memos" && m == http.MethodGet:
 		items := h.st.List(ListOptions{
@@ -253,6 +245,29 @@ func (h *handler) route(w http.ResponseWriter, r *http.Request) *apiError {
 		return h.export(w, []string{id})
 	}
 	return bad(405, "不支持的请求方法")
+}
+
+// serveCA 供设备把自签根证书加入信任库；iOS / iPadOS 用配置描述文件安装更可靠。
+func (h *handler) serveCA(w http.ResponseWriter, mobile bool) *apiError {
+	if h.caFile == "" {
+		return bad(404, "未启用内置自签证书")
+	}
+	b, err := os.ReadFile(h.caFile)
+	if err != nil {
+		return bad(404, "证书文件不可用")
+	}
+	if mobile {
+		w.Header().Set("Content-Type", "application/x-apple-aspen-config")
+		w.Header().Set("Content-Disposition", `attachment; filename="voice-memo-ca.mobileconfig"`)
+		w.WriteHeader(200)
+		_, _ = w.Write(mobileConfig(b))
+		return nil
+	}
+	w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+	w.Header().Set("Content-Disposition", `attachment; filename="voice-memo-ca.crt"`)
+	w.WriteHeader(200)
+	_, _ = w.Write(b)
+	return nil
 }
 
 func parseIDs(limit int, values ...string) []string {

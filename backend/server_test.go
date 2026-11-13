@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -527,6 +528,72 @@ func TestSelfSignedCert(t *testing.T) {
 	cert2, _, _, err := ensureTLS(dir)
 	if err != nil || cert2 != cert {
 		t.Fatal("证书应可复用")
+	}
+}
+
+func TestCAEndpoints(t *testing.T) {
+	e := newTestEnv(t)
+	for _, p := range []string{"/api/ca.crt", "/api/ca.mobileconfig"} {
+		code, _ := e.json(t, http.MethodGet, p, nil, nil)
+		mustStatus(t, code, 404, "未启用内置 HTTPS 时 "+p)
+	}
+	dir := t.TempDir()
+	_, _, ca, err := ensureTLS(dir)
+	if err != nil {
+		t.Fatalf("生成证书失败: %v", err)
+	}
+	e.h.caFile = ca
+	caPEM, _ := os.ReadFile(ca)
+
+	rec := e.request(t, http.MethodGet, "/api/ca.crt", nil, nil)
+	mustStatus(t, rec.Code, 200, "ca.crt")
+	if ct := rec.Header().Get("Content-Type"); ct != "application/x-x509-ca-cert" {
+		t.Fatalf("ca.crt Content-Type 错误: %s", ct)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), caPEM) {
+		t.Fatal("ca.crt 应与 CA 证书内容完全一致")
+	}
+
+	rec = e.request(t, http.MethodGet, "/api/ca.mobileconfig", nil, nil)
+	mustStatus(t, rec.Code, 200, "ca.mobileconfig")
+	if ct := rec.Header().Get("Content-Type"); ct != "application/x-apple-aspen-config" {
+		t.Fatalf("mobileconfig Content-Type 错误: %s", ct)
+	}
+	for _, want := range []string{"<plist", "com.apple.security.pem", "BEGIN CERTIFICATE", "PayloadDisplayName"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("mobileconfig 缺少 %q", want)
+		}
+	}
+	dec := xml.NewDecoder(bytes.NewReader(rec.Body.Bytes()))
+	for {
+		_, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("mobileconfig XML 语法无效: %v", err)
+		}
+	}
+}
+
+func TestMobileCaptureAudioFormats(t *testing.T) {
+	e := newTestEnv(t)
+	_, memo := e.json(t, http.MethodPost, "/api/memos", map[string]any{"title": "手机系统录音"}, nil)
+	id := memo["id"].(string)
+	for _, tc := range []struct{ mime, ext string }{
+		{"audio/3gpp", "3gp"}, {"audio/amr", "amr"},
+		{"audio/mp4", "m4a"}, {"audio/x-caf", "caf"},
+		{"application/octet-stream", "bin"},
+	} {
+		rec := e.request(t, http.MethodPut, "/api/memos/"+id+"/audio", []byte("fake-mobile-audio"), map[string]string{
+			"Content-Type": tc.mime, "X-Audio-Mime": tc.mime, "X-Audio-Duration": "3000",
+		})
+		mustStatus(t, rec.Code, 200, "上传 "+tc.mime)
+		var data map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &data)
+		if !strings.HasSuffix(fmt.Sprint(data["audioFile"]), "."+tc.ext) {
+			t.Fatalf("%s 应保存为 .%s，实际 %v", tc.mime, tc.ext, data["audioFile"])
+		}
 	}
 }
 

@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 FROM scratch
 LABEL org.opencontainers.image.title="Voice Memo Suite" \
       org.opencontainers.image.description="录音、回放、转写、摘要、检索、提醒与导出的语音备忘录" \
-      org.opencontainers.image.version="0.2.0" \
+      org.opencontainers.image.version="0.2.1" \
       org.opencontainers.image.licenses="MIT"
 
 # 时区数据已通过 _ "time/tzdata" 编进二进制；CA 供 ASR/LLM 的 HTTPS 调用

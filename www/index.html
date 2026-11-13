@@ -2,10 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f6f7f9">
   <title>语音备忘录 · Voice Memo Suite</title>
-  <link rel="stylesheet" href="./styles.css?v=0.2.0">
+  <link rel="stylesheet" href="./styles.css?v=0.2.1">
 </head>
 <body>
   <div class="app">
@@ -21,14 +21,16 @@
       </div>
 
       <div class="record-actions">
-        <button class="record-primary" id="btn-record" type="button">
-          <span class="mic-dot"></span><span id="btn-record-label">开始录音</span>
+        <button class="record-primary" id="btn-record" type="button" data-record-btn>
+          <span class="mic-dot"></span><span id="btn-record-label" data-record-label>开始录音</span>
         </button>
         <div class="record-secondary">
           <button class="ghost-btn" id="btn-import" type="button">导入音频</button>
           <button class="ghost-btn" id="btn-new" type="button">新建空白</button>
         </div>
         <input type="file" id="file-input" accept="audio/*" hidden>
+        <!-- 手机系统录音机：capture 不依赖 getUserMedia，HTTP / 自签 HTTPS 下同样可用 -->
+        <input type="file" id="capture-input" accept="audio/*" capture hidden>
       </div>
 
       <nav class="nav" id="nav-views">
@@ -61,6 +63,35 @@
 
     <!-- 中间列表 -->
     <main class="main">
+      <!-- 手机竖屏常驻操作栏：窄屏时左侧栏会被隐藏，录音/导入/导航必须始终可达 -->
+      <div class="mobile-bar" id="mobile-bar">
+        <div class="mb-head">
+          <div class="mb-brand">
+            <span class="mb-mark">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/>
+              </svg>
+            </span>
+            <strong>语音备忘录</strong>
+          </div>
+          <button class="ghost-btn" id="m-settings" type="button">设置</button>
+        </div>
+        <div class="mb-actions">
+          <button class="record-primary" id="m-record" type="button" data-record-btn>
+            <span class="mic-dot"></span><span data-record-label>开始录音</span>
+          </button>
+          <button class="ghost-btn" id="m-import" type="button">导入</button>
+          <button class="ghost-btn" id="m-capture" type="button">手机录音</button>
+        </div>
+        <div class="mb-nav" id="mobile-nav">
+          <button type="button" data-view="all" class="active">全部</button>
+          <button type="button" data-view="today">今天</button>
+          <button type="button" data-view="starred">收藏</button>
+          <button type="button" data-view="reminders">待提醒</button>
+          <span class="mb-chips" id="mobile-chips"></span>
+        </div>
+      </div>
+
       <header class="topbar">
         <div class="search-wrap">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
@@ -192,21 +223,25 @@
     </aside>
   </div>
 
-  <!-- HTTP 不安全上下文提示：浏览器会禁用麦克风，这里给出可操作的替代方案 -->
+  <!-- 录音环境诊断：区分 HTTP、自签证书未被信任、浏览器不支持，分别给出可操作的解决方案 -->
   <div class="insecure-banner" id="insecure-banner" hidden>
     <div class="ib-icon">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
     </div>
     <div class="ib-body">
-      <strong>当前通过 HTTP 访问，浏览器已禁用麦克风</strong>
-      <p>这是浏览器的安全策略（只有 HTTPS 或 localhost 才能录音），不是套件故障。三种办法：① 用「导入音频」上传本地录音，其余功能完全不受影响；② 在设置里开启内置 HTTPS；③ 桌面 Chrome / Edge 用下面的启动参数把本地址标记为可信。</p>
-      <code id="insecure-cmd"></code>
+      <strong id="ib-title">正在检测录音环境…</strong>
+      <p id="ib-desc"></p>
+      <code id="ib-code" hidden></code>
       <div class="ib-actions">
-        <button type="button" id="insecure-copy" class="ghost-btn">复制启动参数</button>
-        <button type="button" id="insecure-open-settings" class="ghost-btn">打开设置</button>
+        <button type="button" id="ib-ca-crt" class="ghost-btn" hidden>下载 CA 证书</button>
+        <button type="button" id="ib-ca-ios" class="ghost-btn" hidden>iOS 描述文件</button>
+        <button type="button" id="ib-capture" class="ghost-btn">用系统录音 / 导入音频</button>
+        <button type="button" id="ib-copy" class="ghost-btn" hidden>复制启动参数</button>
+        <button type="button" id="ib-settings" class="ghost-btn">打开设置</button>
+        <button type="button" id="ib-recheck" class="ghost-btn">重新检测</button>
       </div>
     </div>
-    <button type="button" id="insecure-dismiss" class="ib-close" aria-label="收起提示">×</button>
+    <button type="button" id="ib-dismiss" class="ib-close" aria-label="收起提示">×</button>
   </div>
 
   <!-- 设置中心：AI 服务商 / 音频格式 / 上限 / 运行与 HTTPS，全部保存到 NAS 数据目录 -->
@@ -296,19 +331,31 @@
           <div class="runtime-box" id="set-https-state"></div>
           <p class="field-note" id="set-secure-state"></p>
           <div class="info-card">
-            <strong>HTTP 下能录音吗？</strong>
-            <p>浏览器规定 <code>getUserMedia</code> 只能在 HTTPS 或 localhost 下工作，服务端无法绕过。但有三条可用路径：</p>
+            <strong>为什么用了 HTTPS 还是不能录音？</strong>
+            <p>浏览器规定 <code>getUserMedia</code> 只能在「受信任的安全源」下使用。自签证书如果<b>没有导入设备信任库</b>，Edge / Chrome 即使让你点了「继续前往」，也会直接隐藏麦克风接口 —— 这与浏览器版本无关，升级到最新版也无效。四条可用路径：</p>
             <ol>
-              <li><b>推荐</b>：开启内置 HTTPS —— 在 compose 里加 <code>ENABLE_HTTPS=1</code>、<code>TLS_SAN=你的NAS_IP</code> 并重建容器，然后访问 <code>https://NAS_IP:端口</code>，下载并导入 CA 证书后地址栏不再告警，麦克风可用。</li>
-              <li>桌面 Chrome / Edge 用启动参数把本地址视为安全源（下方命令，需使用独立 user-data-dir）；Firefox 可在 <code>about:config</code> 打开 <code>media.devices.insecure.enabled</code> 与 <code>media.getusermedia.insecure.enabled</code>。</li>
-              <li>不录音，改用「导入音频」上传手机/录音笔文件，转写、摘要、检索、导出在纯 HTTP 下完全可用。</li>
+              <li><b>推荐：内置 HTTPS + 安装 CA</b> —— 在 compose 里加 <code>ENABLE_HTTPS=1</code>、<code>TLS_SAN=你的NAS_IP或域名</code> 重建容器，访问 <code>https://&lt;SAN 里的地址&gt;:端口</code>，再按下方步骤把 CA 装进设备信任库并重启浏览器。地址必须与证书里的地址一致。</li>
+              <li><b>手机最省事：用系统录音机</b> —— 点「手机录音」调起系统录音 App，录完自动导入。这条路径不依赖麦克风 API，HTTP、自签 HTTPS、任何浏览器都能用。</li>
+              <li>桌面 Chrome / Edge 用下方启动参数把 HTTP 地址视为安全源（需独立 user-data-dir）；Firefox 可在 <code>about:config</code> 打开 <code>media.devices.insecure.enabled</code> 与 <code>media.getusermedia.insecure.enabled</code>。</li>
+              <li>不录音，改用「导入音频」上传手机 / 录音笔文件，转写、摘要、检索、导出在纯 HTTP 下完全可用。</li>
             </ol>
           </div>
-          <label class="field-label" for="set-https-cmd">Chrome / Edge 启动参数</label>
+          <h3 class="sub-head">安装自签 CA（内置 HTTPS 必做）</h3>
+          <div class="form-actions" id="ca-actions">
+            <a id="set-ca-link" class="ghost-btn" href="/api/ca.crt" download hidden>下载 CA 证书 (.crt)</a>
+            <a id="set-ca-ios-link" class="ghost-btn" href="/api/ca.mobileconfig" download hidden>下载 iOS 描述文件 (.mobileconfig)</a>
+          </div>
+          <ol class="setup-steps" id="ca-steps">
+            <li><b>Windows</b>：双击 .crt → 「安装证书」→ 存储位置选「本地计算机」→ 放入「受信任的根证书颁发机构」；完成后<b>完全关闭并重启</b> Edge / Chrome。</li>
+            <li><b>macOS</b>：双击 .crt 导入「钥匙串访问」→ 在系统钥匙串中找到 <i>Voice Memo Suite Local CA</i> → 双击 → 信任设为「始终信任」；重启浏览器。</li>
+            <li><b>Android</b>：下载 .crt → 设置 → 安全 → 更多安全设置 → 加密与凭据 → 从存储设备安装 → 选择「CA 证书」；安装后用 Chrome / Edge 重新打开页面。</li>
+            <li><b>iOS / iPadOS</b>：用 <b>Safari</b> 点「下载 iOS 描述文件」→ 允许下载 → 设置 → 通用 → VPN 与设备管理 → 安装「语音备忘录 本地 CA」；再到 设置 → 通用 → 关于本机 → <b>证书信任设置</b>，打开对该根证书的完全信任，最后重启 Safari。</li>
+          </ol>
+          <p class="field-note">装完后地址栏不应再出现「不安全 / 证书无效」。若仍提示不支持，请确认访问地址写在 <code>TLS_SAN</code> 里（IP 与域名都填，逗号分隔），且没有通过反向代理把 HTTPS 换成另一张证书。也可改用 NAS 已有的正式证书（<code>TLS_CERT_FILE</code> / <code>TLS_KEY_FILE</code>）或反代，就不需要装 CA。</p>
+          <label class="field-label" for="set-https-cmd">Chrome / Edge 启动参数（HTTP 场景）</label>
           <code class="code-block" id="set-https-cmd"></code>
           <div class="form-actions">
             <button type="button" id="set-https-copy" class="ghost-btn">复制命令</button>
-            <a id="set-ca-link" class="ghost-btn" href="/api/ca.crt" download hidden>下载 CA 证书</a>
           </div>
           <p class="field-note" id="set-https-guide"></p>
         </section>
@@ -324,7 +371,12 @@
     </div>
   </div>
 
+  <!-- 手机竖屏最后一道兜底：fixed 悬浮录音键，不受列表空/非空、滚动位置、侧栏隐藏影响 -->
+  <button class="record-fab" id="fab-record" type="button" data-record-btn aria-label="开始录音 / 停止录音">
+    <span class="mic-dot"></span><span data-record-label>开始录音</span>
+  </button>
+
   <div class="toast-host" id="toast-host" aria-live="polite"></div>
-  <script src="./app.js?v=0.2.0"></script>
+  <script src="./app.js?v=0.2.1"></script>
 </body>
 </html>

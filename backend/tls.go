@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"encoding/xml"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
@@ -194,4 +198,50 @@ func startRedirect(port int, httpsPort int) {
 
 func tlsMinConfig() *tls.Config {
 	return &tls.Config{MinVersion: tls.VersionTLS12}
+}
+
+// mobileConfig 生成 iOS / iPadOS 配置描述文件，把自签 CA 装进系统信任库。
+// Safari 打开 .mobileconfig 会提示「安装描述文件」，比直接下载 .crt 在 iOS 上可靠得多；
+// 描述文件未签名也能安装，但用户仍需在「证书信任设置」里开启完全信任。
+func mobileConfig(caPEM []byte) []byte {
+	sum := sha256.Sum256(caPEM)
+	uuid := func(offset int) string {
+		b := make([]byte, 16)
+		copy(b, sum[offset:offset+16])
+		b[6] = (b[6] & 0x0f) | 0x50
+		b[8] = (b[8] & 0x3f) | 0x80
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	var escaped bytes.Buffer
+	_ = xml.EscapeText(&escaped, caPEM)
+
+	var out bytes.Buffer
+	out.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadContent</key>
+      <string>`)
+	out.Write(escaped.Bytes())
+	out.WriteString(`</string>
+      <key>PayloadType</key><string>com.apple.security.pem</string>
+      <key>PayloadIdentifier</key><string>cn.voice-memo.ca</string>
+      <key>PayloadUUID</key><string>` + uuid(0) + `</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadDisplayName</key><string>Voice Memo Suite Local CA</string>
+    </dict>
+  </array>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadVersion</key><integer>1</integer>
+  <key>PayloadIdentifier</key><string>cn.voice-memo.profile</string>
+  <key>PayloadUUID</key><string>` + uuid(8) + `</string>
+  <key>PayloadDisplayName</key><string>语音备忘录 本地 CA</string>
+  <key>PayloadDescription</key><string>信任 NAS 内置 HTTPS 证书。安装后还需在「设置 → 通用 → 关于本机 → 证书信任设置」启用完全信任。</string>
+</dict>
+</plist>
+`)
+	return out.Bytes()
 }

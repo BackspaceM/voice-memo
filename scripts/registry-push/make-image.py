@@ -33,7 +33,7 @@ ENV = [
 LABELS = {
     "org.opencontainers.image.title": "Voice Memo Suite",
     "org.opencontainers.image.description": "voice memo: record, playback, transcribe, summarize, search, export",
-    "org.opencontainers.image.version": "0.2.0",
+    "org.opencontainers.image.version": "0.2.1",
     "org.opencontainers.image.licenses": "MIT",
 }
 LAYER_MT = "application/vnd.docker.image.rootfs.diff.tar.gzip"
@@ -118,7 +118,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, help="项目根目录（含 backend/ 与 www/）")
     ap.add_argument("--out", required=True, help="产物目录")
-    ap.add_argument("--tag", default="0.2.0")
+    ap.add_argument("--tag", default="0.2.1")
     ap.add_argument("--amd64", required=True, help="linux/amd64 静态二进制")
     ap.add_argument("--arm64", required=True, help="linux/arm64 静态二进制")
     ap.add_argument("--ca", default="", help="CA bundle（PEM）")
