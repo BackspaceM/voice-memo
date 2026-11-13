@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7f9">
+  <title>语音备忘录 · Voice Memo Suite</title>
+  <link rel="stylesheet" href="./styles.css?v=0.2.0">
+</head>
+<body>
+  <div class="app">
+    <!-- 左侧导航 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/>
+          </svg>
+        </div>
+        <div class="brand-text"><strong>语音备忘录</strong><span>VOICE MEMO SUITE</span></div>
+      </div>
+
+      <div class="record-actions">
+        <button class="record-primary" id="btn-record" type="button">
+          <span class="mic-dot"></span><span id="btn-record-label">开始录音</span>
+        </button>
+        <div class="record-secondary">
+          <button class="ghost-btn" id="btn-import" type="button">导入音频</button>
+          <button class="ghost-btn" id="btn-new" type="button">新建空白</button>
+        </div>
+        <input type="file" id="file-input" accept="audio/*" hidden>
+      </div>
+
+      <nav class="nav" id="nav-views">
+        <button type="button" data-view="all" class="active"><span>全部备忘录</span><em id="count-all">0</em></button>
+        <button type="button" data-view="today"><span>今天</span><em id="count-today">0</em></button>
+        <button type="button" data-view="starred"><span>收藏</span><em id="count-starred">0</em></button>
+        <button type="button" data-view="reminders"><span>待提醒</span><em id="count-due">0</em></button>
+      </nav>
+
+      <section class="side-section">
+        <div class="section-head"><span>文件夹</span><button type="button" id="btn-add-folder" title="新建备忘录并指定文件夹">+</button></div>
+        <div class="chip-list" id="folder-list"></div>
+      </section>
+
+      <section class="side-section">
+        <div class="section-head"><span>标签</span></div>
+        <div class="chip-list" id="tag-list"></div>
+      </section>
+
+      <div class="side-foot">
+        <div class="cap"><i id="cap-asr"></i><span>语音转写</span><b id="cap-asr-text">检测中</b></div>
+        <div class="cap"><i id="cap-llm"></i><span>AI 摘要</span><b id="cap-llm-text">检测中</b></div>
+        <button type="button" class="settings-btn" id="btn-settings">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          设置
+        </button>
+        <div class="data-dir" id="data-dir" title="数据存储目录"></div>
+      </div>
+    </aside>
+
+    <!-- 中间列表 -->
+    <main class="main">
+      <header class="topbar">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+          <input id="search" type="search" placeholder="搜索标题、转写、摘要、标签（空格分隔多关键词）" autocomplete="off">
+          <button type="button" id="search-clear" class="clear-btn" hidden aria-label="清空搜索">×</button>
+        </div>
+        <div class="top-actions">
+          <select id="sort" aria-label="排序方式">
+            <option value="updated">最近更新</option>
+            <option value="created">最近创建</option>
+            <option value="duration">时长最长</option>
+          </select>
+          <button class="ghost-btn" id="btn-export-all" type="button" title="导出当前筛选结果">批量导出</button>
+        </div>
+      </header>
+
+      <div class="context-bar">
+        <h1 id="view-title">全部备忘录</h1>
+        <span class="count-pill" id="view-count">0 条</span>
+        <span class="filter-pill" id="active-filter" hidden></span>
+      </div>
+
+      <section class="recorder-panel" id="recorder-panel" hidden>
+        <canvas id="wave" width="900" height="76"></canvas>
+        <div class="rec-meta">
+          <span class="rec-dot"></span>
+          <strong id="rec-time">00:00</strong>
+          <span id="rec-state">正在录音…</span>
+        </div>
+        <div class="rec-actions">
+          <button class="danger-btn" id="btn-stop" type="button">停止并保存</button>
+          <button class="ghost-btn" id="btn-cancel-rec" type="button">取消</button>
+        </div>
+      </section>
+
+      <div class="reminder-banner" id="reminder-banner" hidden></div>
+
+      <div class="list-scroll">
+        <section class="memo-list" id="memo-list"></section>
+        <div class="empty-state" id="empty-state" hidden>
+          <svg viewBox="0 0 120 120" width="110" height="110" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="60" cy="60" r="46" opacity=".18"/>
+            <rect x="50" y="34" width="20" height="38" rx="10" opacity=".7"/>
+            <path d="M38 58a22 22 0 0 0 44 0M60 80v12M48 92h24" opacity=".7"/>
+            <path d="M20 60h8M92 60h8" opacity=".45"/>
+          </svg>
+          <h2 id="empty-title">还没有备忘录</h2>
+          <p id="empty-desc">点击左侧「开始录音」，或导入一段本地音频文件。</p>
+          <button class="primary-btn" id="btn-empty-record" type="button">开始录音</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右侧详情 -->
+    <aside class="detail" id="detail">
+      <div class="detail-empty" id="detail-empty">
+        <svg viewBox="0 0 80 80" width="66" height="66" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".4">
+          <rect x="30" y="14" width="20" height="34" rx="10"/><path d="M20 40a20 20 0 0 0 40 0M40 60v10M30 70h20"/>
+        </svg>
+        <p>选择一条备忘录查看详情</p>
+      </div>
+
+      <div class="detail-body" id="detail-body" hidden>
+        <div class="detail-head">
+          <input id="d-title" class="title-input" type="text" maxlength="200" placeholder="备忘录标题">
+          <div class="detail-sub"><span id="d-created"></span><i>·</i><span id="d-duration"></span></div>
+          <div class="detail-tools">
+            <button type="button" id="d-star" class="icon-btn" title="收藏">☆</button>
+            <button type="button" id="d-export" class="icon-btn" title="导出此条">导出</button>
+            <button type="button" id="d-delete" class="icon-btn danger-text" title="删除">删除</button>
+            <button type="button" id="d-close" class="icon-btn close-btn" title="关闭">×</button>
+          </div>
+        </div>
+
+        <div class="player-wrap" id="player-wrap">
+          <audio id="d-audio" controls preload="auto"></audio>
+          <div class="audio-meta" id="d-audio-meta"></div>
+          <div class="audio-actions">
+            <button type="button" id="d-download" class="text-btn">下载音频</button>
+            <button type="button" id="d-download-wav" class="text-btn">转 WAV 下载</button>
+            <button type="button" id="d-replace-audio" class="text-btn">替换 / 上传音频</button>
+          </div>
+        </div>
+        <div class="no-audio" id="no-audio" hidden>这条备忘录还没有音频，可上传本地音频文件。</div>
+
+        <section class="detail-section">
+          <div class="section-title">AI 摘要 <span class="badge" id="d-ai-badge"></span></div>
+          <textarea id="d-summary" rows="3" maxlength="4000" placeholder="生成摘要，或手动填写一句话结论"></textarea>
+          <button type="button" id="d-analyze" class="soft-btn">生成摘要与标签</button>
+        </section>
+
+        <section class="detail-section">
+          <div class="section-title">语音转写 <span class="badge" id="d-asr-badge"></span></div>
+          <textarea id="d-transcript" rows="7" maxlength="100000" placeholder="转写文本会显示在这里，也可以直接粘贴或手动编辑"></textarea>
+          <button type="button" id="d-transcribe" class="soft-btn">转写这段音频</button>
+        </section>
+
+        <section class="detail-section">
+          <div class="section-title">备注</div>
+          <textarea id="d-note" rows="3" maxlength="10000" placeholder="补充备注…"></textarea>
+        </section>
+
+        <section class="detail-section">
+          <div class="section-title">分类</div>
+          <label class="field-label" for="d-folder">文件夹</label>
+          <input id="d-folder" type="text" list="folder-options" maxlength="60" placeholder="默认">
+          <datalist id="folder-options"></datalist>
+          <label class="field-label" for="d-tags">标签（逗号分隔）</label>
+          <input id="d-tags" type="text" placeholder="工作, 会议, 待办">
+          <div class="tag-suggest" id="d-tag-suggest"></div>
+        </section>
+
+        <section class="detail-section">
+          <div class="section-title">提醒</div>
+          <input id="d-remind" type="datetime-local">
+          <div class="quick-remind">
+            <button type="button" data-min="60">1 小时后</button>
+            <button type="button" data-min="180">3 小时后</button>
+            <button type="button" data-tomorrow="1">明天 9 点</button>
+            <button type="button" data-clear="1">清除</button>
+          </div>
+        </section>
+
+        <div class="detail-save">
+          <span id="d-save-state">修改自动保存</span>
+          <button type="button" id="d-save" class="primary-btn">保存修改</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- HTTP 不安全上下文提示：浏览器会禁用麦克风，这里给出可操作的替代方案 -->
+  <div class="insecure-banner" id="insecure-banner" hidden>
+    <div class="ib-icon">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    </div>
+    <div class="ib-body">
+      <strong>当前通过 HTTP 访问，浏览器已禁用麦克风</strong>
+      <p>这是浏览器的安全策略（只有 HTTPS 或 localhost 才能录音），不是套件故障。三种办法：① 用「导入音频」上传本地录音，其余功能完全不受影响；② 在设置里开启内置 HTTPS；③ 桌面 Chrome / Edge 用下面的启动参数把本地址标记为可信。</p>
+      <code id="insecure-cmd"></code>
+      <div class="ib-actions">
+        <button type="button" id="insecure-copy" class="ghost-btn">复制启动参数</button>
+        <button type="button" id="insecure-open-settings" class="ghost-btn">打开设置</button>
+      </div>
+    </div>
+    <button type="button" id="insecure-dismiss" class="ib-close" aria-label="收起提示">×</button>
+  </div>
+
+  <!-- 设置中心：AI 服务商 / 音频格式 / 上限 / 运行与 HTTPS，全部保存到 NAS 数据目录 -->
+  <div class="modal-mask" id="settings-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="设置">
+      <header class="modal-head">
+        <div><strong>设置</strong><span>修改后立即生效并保存到数据目录，无需重建容器</span></div>
+        <button type="button" id="settings-close" class="icon-btn close-btn" aria-label="关闭">×</button>
+      </header>
+      <nav class="modal-tabs" id="settings-tabs">
+        <button type="button" class="modal-tab active" data-tab="ai">AI 服务</button>
+        <button type="button" class="modal-tab" data-tab="audio">录音与下载</button>
+        <button type="button" class="modal-tab" data-tab="limits">上限与运行</button>
+        <button type="button" class="modal-tab" data-tab="https">连接与安全</button>
+      </nav>
+
+      <div class="modal-body">
+        <section class="settings-panel active" data-panel="ai">
+          <h3>对话 / 摘要服务（LLM）</h3>
+          <label class="field-label" for="set-llm-provider">服务商预设</label>
+          <select id="set-llm-provider"></select>
+          <p class="field-note" id="set-llm-note"></p>
+          <div class="form-grid">
+            <div><label class="field-label" for="set-llm-base">接口地址 Base URL</label><input id="set-llm-base" type="text" placeholder="https://api.openai.com/v1"></div>
+            <div><label class="field-label" for="set-llm-model">模型名</label><input id="set-llm-model" type="text" placeholder="gpt-4o-mini"></div>
+            <div><label class="field-label" for="set-llm-key">API 密钥</label><input id="set-llm-key" type="password" autocomplete="off" placeholder="保持不变（留空即清除）"></div>
+            <div><label class="field-label" for="set-llm-path">对话路径（高级）</label><input id="set-llm-path" type="text" placeholder="/chat/completions"></div>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="set-llm-clear" class="ghost-btn">清除密钥</button>
+            <button type="button" id="set-llm-test" class="soft-btn">测试连接</button>
+            <span class="test-result" id="set-llm-test-result"></span>
+          </div>
+
+          <h3 class="sub-head">语音转写服务（ASR）</h3>
+          <label class="field-label" for="set-asr-provider">服务商预设</label>
+          <select id="set-asr-provider"></select>
+          <p class="field-note" id="set-asr-note"></p>
+          <div class="form-grid">
+            <div><label class="field-label" for="set-asr-base">接口地址 Base URL</label><input id="set-asr-base" type="text" placeholder="https://api.openai.com/v1"></div>
+            <div><label class="field-label" for="set-asr-model">转写模型</label><input id="set-asr-model" type="text" placeholder="whisper-1"></div>
+            <div><label class="field-label" for="set-asr-key">API 密钥</label><input id="set-asr-key" type="password" autocomplete="off" placeholder="保持不变（留空即清除）"></div>
+            <div><label class="field-label" for="set-asr-language">识别语言</label><input id="set-asr-language" type="text" placeholder="zh，填 auto 则不传该字段"></div>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="set-asr-clear" class="ghost-btn">清除密钥</button>
+            <button type="button" id="set-asr-test" class="soft-btn">测试连接</button>
+            <span class="test-result" id="set-asr-test-result"></span>
+          </div>
+          <p class="field-note">除预设外，任意支持 <code>/chat/completions</code> 或 <code>/audio/transcriptions</code> 的 OpenAI 兼容端点都可接入；厂商地址若调整，直接改 Base URL 即可。</p>
+        </section>
+
+        <section class="settings-panel" data-panel="audio">
+          <h3>录音格式</h3>
+          <label class="field-label" for="set-record-format">新录音保存为</label>
+          <select id="set-record-format"></select>
+          <p class="field-note" id="set-record-hint"></p>
+          <p class="capability" id="set-record-capability"></p>
+          <div class="info-card">
+            <strong>为什么默认 WAV？</strong>
+            <p>浏览器 MediaRecorder 生成的 WebM/M4A 常常缺少时长元数据，首次播放时浏览器算不出长度会静音，播过一次才正常。WAV 自带完整 RIFF 头与时长，且 Windows / macOS / iOS / Android / 车载播放器都能直接打开。代价是体积较大（48kHz 单声道约 5.8 MB/分钟）。</p>
+          </div>
+          <h3 class="sub-head">下载</h3>
+          <label class="field-label" for="set-download-format">「下载音频」按钮默认输出</label>
+          <select id="set-download-format">
+            <option value="wav">WAV（自动转码，跨设备通用）</option>
+            <option value="original">原始格式（体积小，直接下载）</option>
+          </select>
+          <p class="field-note">批量导出的 ZIP 始终按原始格式打包，文件名带正确扩展名；详情面板另有「转 WAV 下载」可单独转换任意一条。</p>
+        </section>
+
+        <section class="settings-panel" data-panel="limits">
+          <h3>容量上限</h3>
+          <div class="form-grid">
+            <div><label class="field-label" for="set-max-audio">单条音频上限（MB）</label><input id="set-max-audio" type="number" min="0" step="1" placeholder="0"></div>
+            <div><label class="field-label" for="set-max-export">单次导出上限（MB）</label><input id="set-max-export" type="number" min="0" step="1" placeholder="0"></div>
+            <div><label class="field-label" for="set-max-items">单次导出条数上限</label><input id="set-max-items" type="number" min="0" step="1" placeholder="0"></div>
+          </div>
+          <p class="field-note"><strong>0 表示不限制</strong>（默认）。上传与导出均为流式写盘，大文件不会占满内存；如需给 NAS 留出空间，可在这里随时改，立即生效。</p>
+          <h3 class="sub-head">容器运行信息（只读）</h3>
+          <div class="runtime-box" id="set-runtime"></div>
+          <p class="field-note">PUID / PGID / UMASK 与 HTTPS 开关在进程启动时读取，需在 <code>docker-compose.yml</code> 中修改并重建容器；其余设置都能在本页即时修改。</p>
+        </section>
+
+        <section class="settings-panel" data-panel="https">
+          <h3>当前连接</h3>
+          <div class="runtime-box" id="set-https-state"></div>
+          <p class="field-note" id="set-secure-state"></p>
+          <div class="info-card">
+            <strong>HTTP 下能录音吗？</strong>
+            <p>浏览器规定 <code>getUserMedia</code> 只能在 HTTPS 或 localhost 下工作，服务端无法绕过。但有三条可用路径：</p>
+            <ol>
+              <li><b>推荐</b>：开启内置 HTTPS —— 在 compose 里加 <code>ENABLE_HTTPS=1</code>、<code>TLS_SAN=你的NAS_IP</code> 并重建容器，然后访问 <code>https://NAS_IP:端口</code>，下载并导入 CA 证书后地址栏不再告警，麦克风可用。</li>
+              <li>桌面 Chrome / Edge 用启动参数把本地址视为安全源（下方命令，需使用独立 user-data-dir）；Firefox 可在 <code>about:config</code> 打开 <code>media.devices.insecure.enabled</code> 与 <code>media.getusermedia.insecure.enabled</code>。</li>
+              <li>不录音，改用「导入音频」上传手机/录音笔文件，转写、摘要、检索、导出在纯 HTTP 下完全可用。</li>
+            </ol>
+          </div>
+          <label class="field-label" for="set-https-cmd">Chrome / Edge 启动参数</label>
+          <code class="code-block" id="set-https-cmd"></code>
+          <div class="form-actions">
+            <button type="button" id="set-https-copy" class="ghost-btn">复制命令</button>
+            <a id="set-ca-link" class="ghost-btn" href="/api/ca.crt" download hidden>下载 CA 证书</a>
+          </div>
+          <p class="field-note" id="set-https-guide"></p>
+        </section>
+      </div>
+
+      <footer class="modal-foot">
+        <span id="settings-status"></span>
+        <div>
+          <button type="button" id="settings-reload" class="ghost-btn">放弃修改</button>
+          <button type="button" id="settings-save" class="primary-btn">保存设置</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div class="toast-host" id="toast-host" aria-live="polite"></div>
+  <script src="./app.js?v=0.2.0"></script>
+</body>
+</html>

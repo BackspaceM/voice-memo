@@ -1,0 +1,13 @@
+.git
+.github
+dist
+data
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+backend/*_test.go
+build_dir
+scripts/registry-push
+__pycache__

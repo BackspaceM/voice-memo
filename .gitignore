@@ -1,0 +1,9 @@
+backend/data/
+backend/voicememo
+backend/*.test
+data/
+dist/
+__pycache__/
+*.pyc
+.env
+.DS_Store

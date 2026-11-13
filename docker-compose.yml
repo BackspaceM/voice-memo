@@ -1,0 +1,52 @@
+name: voice-memo
+
+services:
+  voice-memo:
+    build:
+      context: .
+    image: ${DOCKERHUB_USER:-liuyunshan613}/voice-memo:${TAG:-0.2.0}
+    container_name: voice-memo
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8787}:21087"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 权限：0 表示以 root 运行（推荐用于 NAS 共享目录）。
+      # 若要以 NAS 用户身份运行，把 PUID/PGID 改成目录属主（绿联通常为 1000 / 10），
+      # 程序会自动把 /data 属主改过去并降权；也兼容面板常见的 UID / GID 变量。
+      PUID: ${PUID:-0}
+      PGID: ${PGID:-0}
+      UMASK: ${UMASK:-022}
+      # 0 表示不限制单条音频与导出大小/条数
+      MAX_AUDIO_MB: ${MAX_AUDIO_MB:-0}
+      MAX_EXPORT_MB: ${MAX_EXPORT_MB:-0}
+      MAX_EXPORT_ITEMS: ${MAX_EXPORT_ITEMS:-0}
+      # 默认值；以上限、录音格式、AI 密钥等都能在 Web「设置」页即时修改，
+      # 保存到 /data/settings.json，优先级高于这里的环境变量。
+      RECORD_FORMAT: ${RECORD_FORMAT:-wav}
+      DOWNLOAD_FORMAT: ${DOWNLOAD_FORMAT:-wav}
+      # 内置 HTTPS：设 1 并填 NAS IP/域名后重建容器，用 https:// 访问同一端口即可录音。
+      ENABLE_HTTPS: ${ENABLE_HTTPS:-0}
+      TLS_SAN: ${TLS_SAN:-localhost}
+      HTTPS_REDIRECT_PORT: ${HTTPS_REDIRECT_PORT:-0}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      ASR_API_KEY: ${ASR_API_KEY:-}
+      ASR_BASE_URL: ${ASR_BASE_URL:-}
+      ASR_MODEL: ${ASR_MODEL:-whisper-1}
+      ASR_LANGUAGE: ${ASR_LANGUAGE:-zh}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+    volumes:
+      - voice-memo-data:/data
+    healthcheck:
+      test: ["CMD", "/app/voice-memo", "--health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 15s
+
+volumes:
+  voice-memo-data:
