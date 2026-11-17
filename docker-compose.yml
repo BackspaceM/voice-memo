@@ -4,7 +4,7 @@ services:
   voice-memo:
     build:
       context: .
-    image: ${DOCKERHUB_USER:-liuyunshan613}/voice-memo:${TAG:-0.2.1}
+    image: ${DOCKERHUB_USER:-backspacem}/voice-memo:${TAG:-0.2.1}
     container_name: voice-memo
     restart: unless-stopped
     ports:

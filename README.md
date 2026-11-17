@@ -2,7 +2,7 @@
 
 装在绿联 NAS（或任意 Docker 主机）上的私人语音备忘录：录音、回放、语音转文字、AI 摘要与标签、全文检索、文件夹 / 标签 / 收藏 / 提醒、单条或批量导出。数据全部保存在自己的 `/data` 卷里。
 
-- **镜像**：`liuyunshan613/voice-memo:0.2.1`（`:latest` 同步更新），Public，支持 `linux/amd64` + `linux/arm64`
+- **镜像**：`backspacem/voice-memo:0.2.1`（`:latest` 同步更新），Public，支持 `linux/amd64` + `linux/arm64`
 - **端口**：容器内 `21087`，映射到主机的端口可自定义（下文用 `8787`）
 - **依赖**：零运行时依赖，静态二进制 + `scratch` 镜像，不需要数据库
 - **配置**：网页里就能改，写完立即生效并保存，不用改编排文件、不用 SSH
@@ -20,7 +20,7 @@ docker run -d --name voice-memo \
   -e TZ=Asia/Shanghai \
   -e PUID=0 -e PGID=0 \
   --restart unless-stopped \
-  liuyunshan613/voice-memo:0.2.1
+  backspacem/voice-memo:0.2.1
 ```
 
 ### 或用 docker compose
@@ -30,7 +30,7 @@ docker run -d --name voice-memo \
 ```yaml
 services:
   voice-memo:
-    image: liuyunshan613/voice-memo:0.2.1
+    image: backspacem/voice-memo:0.2.1
     container_name: voice-memo
     restart: unless-stopped
     ports:
@@ -49,7 +49,7 @@ services:
 
 ### 绿联 NAS 图形界面
 
-「应用中心 → Docker → 镜像 → 拉取」填 `liuyunshan613/voice-memo:0.2.1`；创建容器时端口填 `8787 → 21087`，卷把 `/data` 指到一个共享目录，环境变量按上面填写。
+「应用中心 → Docker → 镜像 → 拉取」填 `backspacem/voice-memo:0.2.1`；创建容器时端口填 `8787 → 21087`，卷把 `/data` 指到一个共享目录，环境变量按上面填写。
 
 打开 `http://<NAS IP>:8787` 即可使用。
 
